@@ -1,0 +1,1 @@
+"""Transactional change-cursor synchronization."""
