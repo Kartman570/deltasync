@@ -7,7 +7,9 @@ No accounts, external services, datasets or credentials are needed.
 ## Quickstart
 
 Requires Python 3.11+ and PostgreSQL 14+ server tools (`initdb` and `pg_ctl`) on
-PATH. Run as a normal user, not root. macOS and Linux are supported.
+PATH. Validated on macOS with Python 3.14.5 and PostgreSQL 17.12;
+the minimum versions and Linux have not been exercised here.
+Run as a normal user, not root. macOS and Linux are supported.
 
 ```sh
 python3 -m venv .venv
@@ -21,6 +23,9 @@ Run these commands from the repository root. The demo and test commands create
 isolated disposable PostgreSQL clusters in private temporary directories. They
 use Unix sockets, disable TCP listening and remove their clusters on completion.
 Local trust authentication applies only to these generated-data clusters.
+On Homebrew, use `brew install postgresql@17` and then
+`export PATH="$(brew --prefix postgresql@17)/bin:$PATH"`; `libpq` alone
+contains client tools and is insufficient. Do not start a system service.
 No existing PostgreSQL service is needed or modified. A PostgreSQL installation
 must already exist; these commands do not install one.
 
