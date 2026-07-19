@@ -12,10 +12,15 @@ def database():
     for executable in ("initdb", "pg_ctl"):
         if not shutil.which(executable):
             raise RuntimeError(f"{executable} is required on PATH")
+    server = Path(shutil.which("initdb")).resolve().with_name("postgres")
+    if not server.is_file():
+        raise RuntimeError("PostgreSQL server is missing; put the full server bin directory on PATH")
+    shared = server.parent.parent / "share" / "postgresql"
+    init_options = ["-L", str(shared)] if (shared / "postgres.bki").exists() else []
     with tempfile.TemporaryDirectory(prefix="deltasync-", dir="/tmp") as directory:
         root = Path(directory)
         data = root / "data"
-        subprocess.run(["initdb", "-D", str(data), "-U", "deltasync", "-A", "trust", "--no-locale"],
+        subprocess.run(["initdb", "-D", str(data), "-U", "deltasync", "-A", "trust", "--no-locale", "--encoding=UTF8"] + init_options,
                        check=True, stdout=subprocess.DEVNULL)
         started = False
         try:

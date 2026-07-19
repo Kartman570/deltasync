@@ -89,3 +89,45 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(result["result"], "PASS")
         self.assertEqual(result["applied_events"], 73)
         self.assertEqual(result["live_records"], 27)
+
+    def test_duplicate_snapshot_ids_roll_back(self):
+        import psycopg
+        page = {"items": [events()[0], events()[0]], "next": 2, "watermark": 73, "done": True}
+        with patch("deltasync.sync.fetch", return_value=page), self.assertRaises(psycopg.IntegrityError):
+            reconcile(self.conn, "unused")
+        self.assertEqual(cursor(self.conn), 0)
+        self.assertEqual(state(self.conn), {})
+
+    def test_http_failure_preserves_committed_page(self):
+        from urllib.error import URLError
+        pages = [{"items": events()[:7], "next": 7, "done": False}, URLError("unavailable")]
+        with patch("deltasync.sync.fetch", side_effect=pages), self.assertRaises(URLError):
+            sync(self.conn, "unused")
+        self.assertEqual(cursor(self.conn), 7)
+        with serve() as url:
+            sync(self.conn, url)
+        self.assertEqual(cursor(self.conn), 73)
+
+    def test_two_workers_synchronize_same_source(self):
+        from concurrent.futures import ThreadPoolExecutor
+        def worker(url):
+            with connect(os.environ["DELTASYNC_DSN"]) as connection:
+                return sync(connection, url, 2)
+        with serve() as url, ThreadPoolExecutor(max_workers=2) as executor:
+            futures = [executor.submit(worker, url) for _ in range(2)]
+            self.assertEqual([future.result(timeout=20) for future in futures], [73, 73])
+        self.assertEqual(self.conn.execute("SELECT count(*) FROM applied_events").fetchone()[0], 73)
+        self.assertEqual(state(self.conn), {x["id"]: x["value"] for x in snapshot(events())})
+
+    def test_cli_init_status_and_sync(self):
+        import json
+        import subprocess
+        import sys
+        def cli(*args):
+            return subprocess.run([sys.executable, "-m", "deltasync", *args],
+                                  check=True, capture_output=True, text=True, timeout=20).stdout
+        cli("init")
+        self.assertEqual(json.loads(cli("status")), {})
+        with serve() as url:
+            self.assertEqual(cli("sync", "--api", url).strip(), "73")
+        self.assertEqual(json.loads(cli("status")), state(self.conn))
